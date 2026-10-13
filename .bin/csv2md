@@ -1,0 +1,90 @@
+#!/usr/bin/python
+import csv
+import sys
+from pathlib import Path
+
+def csv_to_markdown(input_path: str, output_path: str = None) -> str:
+    """
+    将CSV文件转换为Markdown格式。
+
+    规则：
+        - 第一列的值作为二级标题（##）
+        - 第一列的列名被忽略（不使用）
+        - 后续每一列：列名作为三级标题（###），该列的值作为段落内容
+    """
+    csv_path = Path(input_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"文件不存在: {input_path}")
+
+    with open(csv_path, 'r', newline='', encoding='utf-8-sig') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    if not rows:
+        return ""
+
+    # 第一行是表头
+    headers = rows[0]
+    if len(headers) < 2:
+        raise ValueError("CSV至少需要两列（第一列作为标题，后续列作为属性）")
+
+    # 表头中，第一列的列名我们不使用
+    # 后续列的列名
+    prop_headers = headers[1:]
+
+    markdown_lines = []
+
+    # 从第二行开始处理数据行
+    for row in rows[1:]:
+        if len(row) == 0:
+            continue
+
+        # 第一列的值作为二级标题
+        first_col_value = row[0].strip()
+        if first_col_value:  # 非空才添加标题
+            markdown_lines.append(f"## {first_col_value}")
+        else:
+            markdown_lines.append(f"## (空值)")
+
+        # 处理后续列
+        for i, prop_header in enumerate(prop_headers):
+            # 确保当前行有足够的列，否则使用空字符串
+            prop_value = row[i + 1].strip() if (i + 1) < len(row) else ""
+            if prop_header.strip():  # 列名非空
+                markdown_lines.append(f"### {prop_header}")
+            else:
+                markdown_lines.append(f"### (列{i+1})")
+            markdown_lines.append(prop_value if prop_value else "(空)")
+            # 在每一对属性之间加一个空行（除了最后一个属性后不加）
+            if i < len(prop_headers) - 1:
+                markdown_lines.append("")
+
+        # 不同记录之间加一个分隔空行
+        markdown_lines.append("\n")
+
+    return "\n".join(markdown_lines)
+
+def main():
+    """命令行入口"""
+    if len(sys.argv) < 2:
+        print("用法: python csv_to_markdown.py <输入CSV文件> [输出Markdown文件]")
+        print("示例: python csv_to_markdown.py data.csv output.md")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else None
+
+    try:
+        md_content = csv_to_markdown(input_file)
+        if output_file:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+            print(f"成功写入: {output_file}")
+        else:
+            print(md_content)
+    except Exception as e:
+        print(f"错误: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

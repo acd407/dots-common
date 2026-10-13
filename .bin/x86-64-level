@@ -1,0 +1,24 @@
+#!/bin/bash
+check_x86_64_level() {
+	local flags=$(grep flags /proc/cpuinfo | head -n 1 | cut -d: -f2)
+	local level=1
+
+	# x86-64-v2 要求
+	if [[ "$flags" =~ "cx16" && "$flags" =~ "lahf_lm" && "$flags" =~ "popcnt" && "$flags" =~ "sse4_1" && "$flags" =~ "sse4_2" && "$flags" =~ "ssse3" ]]; then
+		level=2
+	fi
+
+	# x86-64-v3 要求
+	if [[ "$flags" =~ "avx" && "$flags" =~ "avx2" && "$flags" =~ "bmi1" && "$flags" =~ "bmi2" && "$flags" =~ "fma" && "$flags" =~ "movbe" ]]; then
+		level=3
+	fi
+
+	# x86-64-v4 要求
+	if [[ "$flags" =~ "avx512f" && "$flags" =~ "avx512bw" && "$flags" =~ "avx512cd" && "$flags" =~ "avx512dq" && "$flags" =~ "avx512vl" ]]; then
+		level=4
+	fi
+
+	echo "x86-64-v$level"
+}
+
+check_x86_64_level

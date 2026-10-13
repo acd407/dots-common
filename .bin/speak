@@ -1,0 +1,30 @@
+#!/bin/fish
+set -l CACHE_DIR ~/.local/share/tts
+
+if not test -d $CACHE_DIR
+    mkdir -p $CACHE_DIR
+end
+
+if test -z "$argv[1]"
+    exit 1
+end
+
+set -l word (string lower $argv[1])
+
+trap 'rm $CACHE_DIR/$word.mp3' INT
+
+set -l fail_count 0
+while not test -f $CACHE_DIR/$word.mp3
+    if edge-tts --text "$word" --write-media $CACHE_DIR/$word.mp3 2>/dev/null
+        break
+    else
+        set fail_count (math $fail_count + 1)
+        sleep 1
+        rm -f $CACHE_DIR/$word.mp3
+        if test $fail_count = 3
+            exit 1
+        end
+    end
+end
+
+paplay --volume=65535 $CACHE_DIR/$word.mp3

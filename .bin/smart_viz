@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+
+import re
+import sys
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+# ========= matplotlib 全局样式 =========
+plt.rcParams["font.family"] = "monospace"
+plt.rcParams["axes.unicode_minus"] = False
+
+
+# ========= 正则规则 =========
+PATTERNS = {
+    "percentage_used": re.compile(r"Percentage Used:\s+([\d,]+)%"),
+    "data_read_tb": re.compile(r"Data Units Read:\s+[\d,]+\s+\[(.+?) TB\]"),
+    "data_written_tb": re.compile(r"Data Units Written:\s+[\d,]+\s+\[(.+?) TB\]"),
+    "power_on_hours": re.compile(r"Power On Hours:\s+([\d,]+)"),
+    "unsafe_shutdowns": re.compile(r"Unsafe Shutdowns:\s+([\d,]+)"),
+    "power_cycles": re.compile(r"Power Cycles:\s+([\d,]+)"),
+    "warn_temp_time": re.compile(r"Warning\s+Comp\. Temperature Time:\s+([\d,]+)"),
+}
+
+
+def parse_log(path: Path):
+    data = {}
+
+    try:
+        ts = int(path.stem)
+        data["timestamp"] = ts
+        data["datetime"] = datetime.fromtimestamp(ts)
+    except ValueError:
+        return None
+
+    text = path.read_text(errors="ignore")
+
+    for key, pattern in PATTERNS.items():
+        match = pattern.search(text)
+        if match:
+            value = match.group(1).replace(",", "")
+            data[key] = float(value)
+        else:
+            data[key] = None
+
+    return data
+
+
+def load_logs(log_dir: Path):
+    rows = []
+
+    for file in sorted(log_dir.glob("*.log")):
+        row = parse_log(file)
+        if row:
+            rows.append(row)
+
+    if not rows:
+        raise RuntimeError("未解析到任何有效 smart log")
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    return df
+
+
+def plot_smart(df: pd.DataFrame):
+    fig, axes = plt.subplots(3, 2, figsize=(14, 10))
+    fig.suptitle("NVMe SMART Time Series", fontsize=16)
+
+    # 读写量
+    axes[0, 0].plot(df["datetime"], df["data_read_tb"], label="Read (TB)")
+    axes[0, 0].plot(df["datetime"], df["data_written_tb"], label="Written (TB)")
+    axes[0, 0].set_title("Data Units Read / Written")
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+
+    # 寿命消耗
+    axes[0, 1].plot(df["datetime"], df["percentage_used"])
+    axes[0, 1].set_title("Percentage Used (%)")
+    axes[0, 1].grid(True)
+
+    # Unsafe Shutdowns
+    axes[1, 0].plot(df["datetime"], df["unsafe_shutdowns"])
+    axes[1, 0].set_title("Unsafe Shutdowns")
+    axes[1, 0].grid(True)
+
+    # Warning Comp. Temperature Time
+    axes[1, 1].plot(df["datetime"], df["warn_temp_time"])
+    axes[1, 1].set_title("Warning Comp. Temperature Time")
+    axes[1, 1].grid(True)
+
+    # Power On Hours
+    axes[2, 0].plot(df["datetime"], df["power_on_hours"])
+    axes[2, 0].set_title("Power On Hours")
+    axes[2, 0].grid(True)
+
+    # Power Cycles
+    axes[2, 1].plot(df["datetime"], df["power_cycles"])
+    axes[2, 1].set_title("Power Cycles")
+    axes[2, 1].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <smart_log_dir>")
+        sys.exit(1)
+
+    log_dir = Path(sys.argv[1]).expanduser()
+    if not log_dir.is_dir():
+        print("Error: not a directory")
+        sys.exit(1)
+
+    df = load_logs(log_dir)
+    plot_smart(df)
+
+
+if __name__ == "__main__":
+    main()

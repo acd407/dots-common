@@ -1,0 +1,25 @@
+[include]
+	path = ~/.config/git/secrets
+
+[init]
+    defaultBranch = master
+[user]
+	email = acd407@qq.com
+	name = acd407
+	signingkey = A70AC77051728C00
+[sendemail]
+	smtpserver = smtp.qq.com
+    smtpuser = acd407@qq.com
+	smtpencryption = tls
+	smtpserverport = 587
+[filter "lfs"]
+    clean = git-lfs clean -- %f
+    smudge = git-lfs smudge -- %f
+    process = git-lfs filter-process
+    required = true
+[commit]
+	gpgSign = true
+[color]
+	ui = auto
+[safe]
+	directory = *

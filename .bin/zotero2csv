@@ -1,0 +1,136 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Zotero Report HTML to CSV Converter
+将 Zotero 生成的报告 HTML 文件转换为完整 CSV（自动保留所有字段）
+
+用法：
+    python zotero_html_to_csv.py input.html
+    python zotero_html_to_csv.py "Zotero 报告simple.html.txt" output.csv
+"""
+
+import sys
+import os
+from bs4 import BeautifulSoup
+from collections import defaultdict
+import csv
+import argparse
+
+
+def parse_zotero_html(html_path):
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    items = soup.find_all("li", class_="item")
+    if not items:
+        raise ValueError("未找到任何文献条目，请确认文件是 Zotero 报告 HTML 格式")
+
+    # 第一步：收集所有字段名（按首次出现顺序）
+    ordered_headers = []
+    seen_headers = set()
+
+    for item in items:
+        # 标题在 <h2> 中
+        if "标题" not in seen_headers:
+            if item.find("h2"):
+                ordered_headers.append("标题")
+                seen_headers.add("标题")
+
+        for th in item.find_all("th"):
+            text = th.get_text(strip=True)
+            if text and text not in seen_headers:
+                ordered_headers.append(text)
+                seen_headers.add(text)
+
+    # 标签在 <ul class="tags"> 中
+    if any(item.find("ul", class_="tags") for item in items):
+        if "标签" not in seen_headers:
+            ordered_headers.append("标签")
+            seen_headers.add("标签")
+
+    # 第二步：提取每条文献的数据
+    rows = []
+    for item in items:
+        row = defaultdict(str)
+
+        # 标题
+        h2 = item.find("h2")
+        if h2:
+            row["标题"] = h2.get_text(strip=True)
+
+        # table 中的字段
+        for tr in item.find_all("tr"):
+            th = tr.find("th")
+            td = tr.find("td")
+            if th and td:
+                key = th.get_text(strip=True)
+                value = td.get_text(strip=True).strip()
+
+                if key == "作者":
+                    # 多个作者累加
+                    if row[key]:
+                        row[key] += "; " + value
+                    else:
+                        row[key] = value
+                else:
+                    row[key] = value
+
+        # 标签
+        tags = []
+        tags_ul = item.find("ul", class_="tags")
+        if tags_ul:
+            for li in tags_ul.find_all("li"):
+                tags.append(li.get_text(strip=True))
+        if tags:
+            row["标签"] = "; ".join(tags)
+
+        rows.append(row)
+
+    return ordered_headers, rows
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="将 Zotero 报告 HTML 转换为 CSV，自动保留所有字段"
+    )
+    parser.add_argument(
+        "input_file", help="输入的 Zotero 报告 HTML 文件路径（可为 .html 或 .txt）"
+    )
+    parser.add_argument("output_file", nargs="?", help="输出 CSV 文件路径（可选）")
+
+    args = parser.parse_args()
+
+    input_path = args.input_file
+    if not os.path.exists(input_path):
+        print(f"错误：文件不存在 -> {input_path}")
+        sys.exit(1)
+
+    # 确定输出路径
+    if args.output_file:
+        output_path = args.output_file
+    else:
+        base_name = os.path.splitext(input_path)[0]
+        output_path = base_name + ".csv"
+
+    try:
+        headers, rows = parse_zotero_html(input_path)
+        print(f"发现 {len(headers)} 个字段列：")
+        print(", ".join(headers))
+        print(f"共提取 {len(rows)} 条文献记录")
+
+        with open(output_path, "w", encoding="utf-8-sig", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        print(f"转换完成！CSV 已保存至：{output_path}")
+
+    except Exception as e:
+        print(f"转换失败：{e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

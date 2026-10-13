@@ -1,0 +1,20 @@
+#!/bin/python
+import click
+
+
+@click.command()
+@click.option("-d", "reverse", is_flag=True)
+@click.argument("ip")
+def main(reverse, ip):
+    if reverse:
+        print(
+            f"{int(ip[6:8],16)}.{int(ip[4:6],16)}.{int(ip[2:4],16)}.{int(ip[0:2],16)}"
+        )
+    else:
+        segs = ip.split(".")
+        for i in segs[::-1]:
+            print(f"{int(i):02X}", end="")
+
+
+if __name__ == "__main__":
+    main()

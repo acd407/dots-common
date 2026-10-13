@@ -1,0 +1,27 @@
+#!/bin/bash
+echo printf '\e[${arg}m'
+
+function prtcolor() {
+    printf "\e[$1m  %3s  \e[0m" $1
+    # Display 6 colors per lines
+}
+# fg
+for var in {30..37}; do
+    prtcolor $var
+done
+printf '\n'
+for var in {90..97}; do
+    prtcolor $var
+done
+printf '\n'
+# bg
+for var in {40..47}; do
+    prtcolor $var
+done
+printf '\n'
+for var in {100..107}; do
+    prtcolor $var
+done
+printf '\n'
+
+exit 0

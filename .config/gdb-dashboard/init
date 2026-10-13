@@ -1,0 +1,4 @@
+dashboard -layout source breakpoints stack threads variables !expressions !history !memory
+dashboard -style syntax_highlighting 'nord'
+dashboard -style divider_fill_style_primary '37'
+dashboard -style style_low '37'

@@ -1,0 +1,13 @@
+---
+ColumnLimit: 120
+SortIncludes: Never
+# We'll use defaults from the LLVM style, but with 4 columns indentation.
+BasedOnStyle: LLVM
+IndentWidth: 4
+# Tab
+TabWidth: 4
+UseTab: Never
+# 如果参数不能在一行上放，则始终在打开的括号后换行。关闭括号将放在新的一行。
+AlignAfterOpenBracket: BlockIndent
+# 仅合并空函数
+AllowShortFunctionsOnASingleLine: Empty

@@ -1,0 +1,9 @@
+add-auto-load-safe-path ~/repository/kernel
+add-auto-load-safe-path ~/repository/embedded
+add-auto-load-safe-path /usr/share
+set print pretty
+set tui mouse-events off
+set style tui-border foreground none
+set style tui-border background black
+set style tui-active-border foreground none
+set style tui-active-border background black

@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Usage:
+# ./dns-override BINARY
+# ./dns-override -s 1.2.3.4,5.6.7.8 BINARY
+
+set -euo pipefail # Strict bash
+
+readonly SEPARATOR=','
+readonly DEFAULT_SERVERS='127.0.0.53'
+SERVERS=''
+
+show_help() {
+    cat >&2 <<EOF
+$0: Run a file with a modified DNS server list
+Usage:
+    $0 [ -s SERVERLIST ] BINARY
+    $0 -h (shows help)
+SERVERLIST:
+    List of servers, separated by $SEPARATOR.
+    Defaults to $DEFAULT_SERVERS when not given.
+BINARY:
+    Executable to run
+EOF
+    exit 1
+}
+
+# Parse args
+while getopts 's:h' opt; do
+    case $opt in
+    s) SERVERS="${SERVERS}${SEPARATOR}${OPTARG}" ;;
+    h | ? | :) show_help ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [[ ! "$@" ]]; then
+    echo "Missing binary" >&2
+    show_help
+fi
+
+# Determine nameservers: explicit -s, else the fixed default
+if [ -n "$SERVERS" ]; then
+    SERVERS="$(echo "$SERVERS" | sed -e "s/^$SEPARATOR//")"
+else
+    SERVERS="$DEFAULT_SERVERS"
+fi
+
+# Build replacement resolv.conf: keep non-nameserver lines, swap in our servers
+NEW_RESOLV="$(grep -Pv '^\s*nameserver ' /etc/resolv.conf 2>/dev/null || true)"
+NEW_RESOLV="${NEW_RESOLV}$(
+    echo
+    echo "$SERVERS" | tr "$SEPARATOR" "\n" | sed 's/^/nameserver /'
+)"
+
+# Materialize the replacement so it can be bind-mounted
+TMP="$(mktemp /tmp/dns-override.XXXXXX)"
+trap 'rm -f "$TMP"' EXIT
+printf '%s\n' "$NEW_RESOLV" >"$TMP"
+
+# Run the target inside a user + mount namespace and bind-mount the fake
+# resolv.conf over the real one. This also affects setuid binaries (e.g. ping)
+# that LD_PRELOAD can never touch, because setuid strips LD_PRELOAD.
+# No real root is required: user namespaces provide the needed privileges.
+# NOTE: a separate network namespace is deliberately NOT created, so a stub
+# resolver on the loopback (e.g. 127.0.0.53) remains reachable.
+# FIX: 移除 exec，让当前 shell 进程保持存活，以便 trap 在 unshare 结束后执行清理。
+unshare -Urm sh -c '
+  mount --bind "$1" /etc/resolv.conf || exit 3
+  shift
+  exec "$@"
+' _ "$TMP" "$@"

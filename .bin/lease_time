@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+import json
+import sys
+import os
+import argparse
+from datetime import datetime, timedelta
+
+# 颜色定义
+COLOR_LABEL = "\033[94m"  # 浅蓝色标签
+COLOR_VALUE = "\033[92m"  # 绿色值
+COLOR_HOSTNAME = "\033[1m"  # 加粗前景色（主机名）
+COLOR_EXPIRED = "\033[91m"  # 红色（过期状态）
+COLOR_RESET = "\033[0m"  # 重置颜色
+
+# 默认扫描目录
+SYSTEMD_LEASE_DIR = "/var/lib/systemd/network/dhcp-server-lease/"
+# dnsmasq lease文件路径
+DNSMASQ_LEASE_FILE = "/var/lib/misc/dnsmasq.leases"
+
+
+def format_duration(delta):
+    """Convert timedelta to human-readable duration."""
+    total_seconds = int(delta.total_seconds())
+    if total_seconds <= 0:
+        return f"{COLOR_EXPIRED}EXPIRED{COLOR_RESET}"
+
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    if seconds > 0 or not parts:
+        parts.append(f"{seconds}s")
+    return " ".join(parts)
+
+
+def format_mac_address(hw_addr, hw_len):
+    """Format hardware address (MAC) from array."""
+    if hw_len <= 0:
+        return "N/A"
+    return ":".join(f"{byte:02x}" for byte in hw_addr[:hw_len])
+
+
+def format_client_id(client_id):
+    """Format client ID from array."""
+    if not client_id:
+        return "N/A"
+    return ":".join(f"{byte:02x}" for byte in client_id)
+
+
+def format_ip_address(ip_array):
+    """Convert IP address array to dotted notation."""
+    return f"{COLOR_VALUE}{'.'.join(str(byte) for byte in ip_array)}{COLOR_RESET}"
+
+
+def is_valid_lease_file(file_path):
+    """Check if file is a valid DHCP lease file."""
+    try:
+        # 检查是否为dnsmasq lease文件
+        if file_path == DNSMASQ_LEASE_FILE:
+            with open(file_path, "r") as f:
+                first_line = f.readline().strip()
+                # dnsmasq lease文件每行有5个字段
+                return len(first_line.split()) == 5
+
+        # 检查是否为systemd lease文件
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        return isinstance(data, dict) and "Address" in data
+    except:
+        return False
+
+
+def process_dnsmasq_lease_file(file_path):
+    """Process dnsmasq DHCP lease file."""
+    try:
+        with open(file_path, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+        return False
+
+    print(f"\n{file_path} (dnsmasq format)")
+    print("=" * 60)
+    print("DHCP Server: dnsmasq")
+    print("\nActive Leases:")
+    print("-" * 60)
+
+    now = datetime.now()
+
+    if not lines:
+        print("No active leases found")
+        print("-" * 60)
+        return True
+
+    for line_num, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line:
+            continue
+
+        parts = line.split()
+        if len(parts) != 5:
+            print(
+                f"Warning: Invalid line format at line {line_num}: {line}",
+                file=sys.stderr,
+            )
+            continue
+
+        try:
+            expiry_timestamp = int(parts[0])
+            mac_address = parts[1]
+            ip_address = f"{COLOR_VALUE}{parts[2]}{COLOR_RESET}"
+            hostname = parts[3] if parts[3] != "*" else "N/A"
+            client_id = parts[4] if parts[4] != "*" else "N/A"
+
+            expiration_time = datetime.fromtimestamp(expiry_timestamp)
+            remaining_time = expiration_time - now
+
+            # 带颜色的标签和值
+            print(
+                f"{COLOR_LABEL}Hostname:{COLOR_RESET}        {COLOR_HOSTNAME}{hostname}{COLOR_RESET}"
+            )
+            print(f"{COLOR_LABEL}IP Address:{COLOR_RESET}      {ip_address}")
+            print(f"{COLOR_LABEL}MAC Address:{COLOR_RESET}     {mac_address}")
+            print(f"{COLOR_LABEL}Client ID:{COLOR_RESET}       {client_id}")
+            print(f"{COLOR_LABEL}Expires At:{COLOR_RESET}      {expiration_time}")
+
+            if remaining_time.total_seconds() <= 0:
+                print(
+                    f"{COLOR_LABEL}Status:{COLOR_RESET}          {COLOR_EXPIRED}EXPIRED{COLOR_RESET}"
+                )
+            else:
+                print(
+                    f"{COLOR_LABEL}Remaining:{COLOR_RESET}       {format_duration(remaining_time)}"
+                )
+
+            print("-" * 60)
+
+        except Exception as e:
+            print(f"Error processing line {line_num}: {e}", file=sys.stderr)
+            continue
+
+    return True
+
+
+def process_dhcp_lease_file(file_path):
+    """Process systemd DHCP lease file."""
+    # 检查是否为dnsmasq格式
+    if file_path == DNSMASQ_LEASE_FILE:
+        return process_dnsmasq_lease_file(file_path)
+
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+        return False
+
+    boot_id = data.get("BootID", "N/A")
+    network_address = format_ip_address(data["Address"])
+    prefix_length = data.get("PrefixLength", "N/A")
+
+    print(f"\n{file_path} (systemd format)")
+    print("=" * 60)
+    print(f"Boot ID: {boot_id}")
+    print(f"Network: {network_address}/{prefix_length}")
+    print("\nActive Leases:")
+    print("-" * 60)
+
+    now = datetime.now()
+    leases = data.get("Leases", [])
+
+    if not leases:
+        print("No active leases found")
+        print("-" * 60)
+        return True
+
+    for lease in leases:
+        client_id = format_client_id(lease.get("ClientId", []))
+        ip_address = format_ip_address(lease["Address"])
+        hostname = lease.get("Hostname", "N/A")
+
+        hw_len = lease.get("HardwareAddressLength", 0)
+        hw_addr = lease.get("HardwareAddress", [])
+        mac_address = format_mac_address(hw_addr, hw_len)
+
+        expiration_usec = lease.get("ExpirationUSec", 0)
+        expiration_realtime_usec = lease.get("ExpirationRealtimeUSec", 0)
+
+        expiration_time = datetime.fromtimestamp(expiration_realtime_usec / 1_000_000)
+        request_time = expiration_time - timedelta(microseconds=expiration_usec)
+        remaining_now = expiration_time - now
+
+        # 带颜色的标签和值
+        print(
+            f"{COLOR_LABEL}Hostname:{COLOR_RESET}        {COLOR_HOSTNAME}{hostname}{COLOR_RESET}"
+        )
+        print(f"{COLOR_LABEL}IP Address:{COLOR_RESET}      {ip_address}")
+        print(f"{COLOR_LABEL}MAC Address:{COLOR_RESET}     {mac_address}")
+        print(f"{COLOR_LABEL}Client ID:{COLOR_RESET}       {client_id}")
+        print(f"{COLOR_LABEL}Request Time:{COLOR_RESET}    {request_time}")
+        print(f"{COLOR_LABEL}Expires At:{COLOR_RESET}      {expiration_time}")
+
+        if remaining_now.total_seconds() <= 0:
+            print(
+                f"{COLOR_LABEL}Status:{COLOR_RESET}          {COLOR_EXPIRED}EXPIRED{COLOR_RESET}"
+            )
+        else:
+            print(
+                f"{COLOR_LABEL}Remaining:{COLOR_RESET}       {format_duration(remaining_now)}"
+            )
+        print("-" * 60)
+
+    return True
+
+
+def scan_lease_directory(directory):
+    """Scan directory for valid DHCP lease files (no extension required)."""
+    if not os.path.isdir(directory):
+        print(f"Error: Directory not found - {directory}", file=sys.stderr)
+        return []
+
+    lease_files = []
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        if os.path.isfile(file_path) and is_valid_lease_file(file_path):
+            lease_files.append(file_path)
+
+    # 检查dnsmasq lease文件是否存在
+    if os.path.isfile(DNSMASQ_LEASE_FILE) and is_valid_lease_file(DNSMASQ_LEASE_FILE):
+        lease_files.append(DNSMASQ_LEASE_FILE)
+
+    return lease_files
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Parse systemd-resolved and dnsmasq DHCP lease files",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "files",
+        nargs="*",
+        default=None,
+        help="Optional: Specific DHCP lease file(s) to parse",
+    )
+
+    global DNSMASQ_LEASE_FILE
+    parser.add_argument(
+        "--dnsmasq",
+        default=DNSMASQ_LEASE_FILE,
+        help="Path to dnsmasq lease file",
+    )
+    args = parser.parse_args()
+
+    # 更新dnsmasq文件路径
+    DNSMASQ_LEASE_FILE = args.dnsmasq
+
+    # 确定要处理的文件列表
+    if args.files:
+        lease_files = args.files
+    else:
+        lease_files = scan_lease_directory(SYSTEMD_LEASE_DIR)
+        if not lease_files:
+            print(
+                f"No valid lease files found in {SYSTEMD_LEASE_DIR} or {DNSMASQ_LEASE_FILE}",
+                file=sys.stderr,
+            )
+            return
+
+    print("DHCP Server Lease Information")
+    for file_path in lease_files:
+        process_dhcp_lease_file(file_path)
+
+
+if __name__ == "__main__":
+    main()

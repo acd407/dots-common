@@ -1,0 +1,5 @@
+require("options")
+require("pack")
+require("keymaps")
+require("autocmd")
+require("functions")

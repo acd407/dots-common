@@ -1,0 +1,15 @@
+{
+    "Inline Assembly": {
+        "prefix": "iasm",
+        "body": [
+            "__asm__ volatile (",
+            "    \"$1\" // Insert assembly instructions here",
+            "    : /* output operands */ $2",
+            "    : /* input operands */ $3",
+            "    : /* clobbers */ $4",
+            ");",
+            "$0"
+        ],
+        "description": "C inline assembly template for GCC/Clang style compilers."
+    }
+}
