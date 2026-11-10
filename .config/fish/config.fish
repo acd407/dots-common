@@ -14,8 +14,8 @@ end
 # --- interactive settings ----------------------------------------------------
 if status is-interactive
     # history（TTY 下关闭）
-    if test "$TERM" = linux -o \( "$XDG_SESSION_TYPE" != x11 -a "$XDG_SESSION_TYPE" != wayland \)
-        set -g fish_history disabled
+    if test "$TERM" = linux
+        set -g fish_history tty
         set -g fish_history_size 0
         set -g fish_history_path /dev/null
     else

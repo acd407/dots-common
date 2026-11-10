@@ -18,6 +18,8 @@ RH.extensions_map.update({
     '.js':   'application/javascript;charset=UTF-8',
     '.json': 'application/json;charset=UTF-8',
     '.py':   'text/x-python;charset=UTF-8',
+    '.csv':  'text/csv;charset=UTF-8',
+    '.tsv':  'text/tsv;charset=UTF-8',
 })
 test(HandlerClass=RH, port=4780)
 "
